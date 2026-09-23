@@ -493,13 +493,21 @@ impl BeatKeeper {
                             continue;
                         }
                     };
+                    let mut audio_path = None;
                     for section in anlz.sections {
-                        #[allow(clippy::single_match)]
                         match section.content {
                             anlz::Content::BeatGrid(grid) => {
                                 self.track_trackers[i].beatgrid = Some(grid);
                             }
+                            anlz::Content::Path(path) => {
+                                audio_path = Some(path.path.to_string());
+                            }
                             _ => (),
+                        }
+                    }
+                    if let Some(path) = audio_path {
+                        for module in &mut self.running_modules {
+                            module.track_path_changed(&path, i);
                         }
                     }
 

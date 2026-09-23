@@ -96,7 +96,15 @@ pub struct Osc {
     send_period_counter: i32,
     last_beat_master: f32,
     last_beats: Vec<f32>,
+    /// Latest track info and audio path per deck, re-sent every few seconds (see slow_update).
+    last_tracks: Vec<Option<TrackInfo>>,
+    last_paths: Vec<Option<String>>,
+    slow_updates: u32,
 }
+
+/// Slow updates run at update_rate / slow_update_every_nth (12 Hz by default); 30 of them is
+/// about 2.5 s between re-sends.
+const RESEND_EVERY_SLOW_UPDATES: u32 = 30;
 
 
 
@@ -174,6 +182,9 @@ impl Osc {
             send_period_counter: 0,
             last_beat_master: 0.0,
             last_beats: vec![0.0; 4],
+            last_tracks: vec![None; 4],
+            last_paths: vec![None; 4],
+            slow_updates: 0,
         }))
     }
 }
@@ -262,9 +273,17 @@ impl OutputModule for Osc {
     }
 
     fn track_changed(&mut self, track: &TrackInfo, deck: usize) {
-        self.send_string(&format!("/{deck}/track/title"), &track.title);
-        self.send_string(&format!("/{deck}/track/artist"), &track.artist);
-        self.send_string(&format!("/{deck}/track/album"), &track.album);
+        self.send_track(track, deck);
+        if let Some(slot) = self.last_tracks.get_mut(deck) {
+            *slot = Some(track.clone());
+        }
+    }
+
+    fn track_path_changed(&mut self, path: &str, deck: usize) {
+        self.send_string(&format!("/{deck}/track/path"), path);
+        if let Some(slot) = self.last_paths.get_mut(deck) {
+            *slot = Some(path.to_string());
+        }
     }
 
     fn track_changed_master(&mut self, track: &TrackInfo) {
@@ -274,6 +293,17 @@ impl OutputModule for Osc {
     }
 
     fn slow_update(&mut self) {
+        self.slow_updates = self.slow_updates.wrapping_add(1);
+        if self.slow_updates % RESEND_EVERY_SLOW_UPDATES == 0 {
+            for deck in 0..self.last_tracks.len() {
+                if let Some(track) = self.last_tracks[deck].clone() {
+                    self.send_track(&track, deck);
+                }
+                if let Some(path) = self.last_paths[deck].clone() {
+                    self.send_string(&format!("/{deck}/track/path"), &path);
+                }
+            }
+        }
         if !self.info_sent {
             self.info_sent = true;
 
@@ -331,6 +361,12 @@ impl OutputModule for Osc {
 }
 
 impl Osc{
+    fn send_track(&self, track: &TrackInfo, deck: usize) {
+        self.send_string(&format!("/{deck}/track/title"), &track.title);
+        self.send_string(&format!("/{deck}/track/artist"), &track.artist);
+        self.send_string(&format!("/{deck}/track/album"), &track.album);
+    }
+
     fn output_phrase(&mut self, addr: &str, phrase: &str){
         match self.message_toggles.phrase_output_format {
             OutputFormat::String => self.send_string(addr, phrase),

@@ -26,6 +26,8 @@ pub trait OutputModule {
     fn time_update_master(&mut self, _time: f32) {}
 
     fn track_changed(&mut self, _track: &TrackInfo, _deck: usize) {}
+    /// Path of the audio file loaded on `deck`, read from its analysis (.DAT) file.
+    fn track_path_changed(&mut self, _path: &str, _deck: usize) {}
     fn track_changed_master(&mut self, _track: &TrackInfo) {}
 
     fn phrase_changed(&mut self, _phrase: &str, _deck: usize) {}
